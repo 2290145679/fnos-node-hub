@@ -20,10 +20,10 @@
 
 ## 🔥 飞牛 (fnOS) 一键指令安装（推荐 🌟）
 
-只需在飞牛 NAS 的终端（SSH / 飞牛自带终端）中复制并运行下面**这一行命令**：
+在飞牛 NAS 的终端中复制并运行下面**这一行命令**：
 
 ```bash
-sudo bash <(curl -sSL https://raw.githubusercontent.com/2290145679/fnos-node-hub/main/install.sh)
+curl -sSL https://raw.githubusercontent.com/2290145679/fnos-node-hub/main/install.sh -o /tmp/install.sh && sudo bash /tmp/install.sh
 ```
 
 > 💡 **交互式配置说明**：
@@ -96,7 +96,7 @@ sudo bash <(curl -sSL https://raw.githubusercontent.com/2290145679/fnos-node-hub
 在飞牛终端随时再次运行安装命令即可进入多功能管理菜单：
 
 ```bash
-sudo bash <(curl -sSL https://raw.githubusercontent.com/2290145679/fnos-node-hub/main/install.sh)
+curl -sSL https://raw.githubusercontent.com/2290145679/fnos-node-hub/main/install.sh -o /tmp/install.sh && sudo bash /tmp/install.sh
 ```
 
 也可以使用标准的 Linux 服务命令：
