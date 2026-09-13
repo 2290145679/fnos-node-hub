@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  fnos-node-hub:
+    build: .
+    container_name: fnos-node-hub
+    restart: unless-stopped
+    ports:
+      - "7788:7788"
+    volumes:
+      - /vol1/1000/Docker/mihomo/config:/vol1/1000/Docker/mihomo/config
+      - /vol1/1000/Docker/clash:/vol1/1000/Docker/clash
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - TZ=Asia/Shanghai

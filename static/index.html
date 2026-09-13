@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FnOS 飞牛代理节点管理面板 - Mihomo & Clash</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Vue 3 -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Google Fonts Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Plus Jakarta Sans', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              100: '#e0e7ff',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+            },
+            fnos: {
+              dark: '#0f172a',
+              card: '#1e293b',
+              border: '#334155'
+            }
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col font-sans antialiased selection:bg-indigo-500 selection:text-white">
+  <div id="app" class="flex-1 flex flex-col" v-cloak>
+
+    <!-- Top Navigation Bar -->
+    <header class="bg-slate-900/80 backdrop-blur border-b border-slate-800 sticky top-0 z-40">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+          <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+            <i data-lucide="network" class="w-5 h-5 text-white"></i>
+          </div>
+          <div>
+            <div class="flex items-center space-x-2">
+              <h1 class="font-bold text-lg text-white">FnOS 节点管理面板</h1>
+              <span class="text-xs px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 font-medium border border-indigo-500/30">Mihomo / Clash</span>
+            </div>
+            <p class="text-xs text-slate-400 font-mono">{{ status.config_path }}</p>
+          </div>
+        </div>
+
+        <!-- System Status Badges & Switch Target -->
+        <div class="flex items-center space-x-3">
+          <!-- Target Switcher -->
+          <div class="bg-slate-800 p-1 rounded-lg flex items-center text-xs font-medium border border-slate-700">
+            <button @click="switchTarget('mihomo')" :class="{'bg-indigo-600 text-white shadow': currentTarget === 'mihomo', 'text-slate-400 hover:text-slate-200': currentTarget !== 'mihomo'}" class="px-3 py-1 rounded-md transition-all flex items-center space-x-1">
+              <i data-lucide="zap" class="w-3.5 h-3.5"></i>
+              <span>Mihomo (活动)</span>
+            </button>
+            <button @click="switchTarget('clash')" :class="{'bg-indigo-600 text-white shadow': currentTarget === 'clash', 'text-slate-400 hover:text-slate-200': currentTarget !== 'clash'}" class="px-3 py-1 rounded-md transition-all flex items-center space-x-1">
+              <i data-lucide="layers" class="w-3.5 h-3.5"></i>
+              <span>Clash</span>
+            </button>
+          </div>
+
+          <!-- Connection Status Pills -->
+          <div class="hidden md:flex items-center space-x-2 text-xs">
+            <div :class="status.ssh_connected ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-red-500/10 text-red-400 border-red-500/20'" class="px-2.5 py-1 rounded-full border flex items-center space-x-1.5 font-medium">
+              <span class="w-2 h-2 rounded-full" :class="status.ssh_connected ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'"></span>
+              <span>SSH: {{ status.ssh_connected ? '已连接 (192.168.1.57)' : '未连接' }}</span>
+            </div>
+
+            <div v-if="currentTarget === 'mihomo'" :class="status.mihomo_api_ready ? 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20' : 'bg-amber-500/10 text-amber-400 border-amber-500/20'" class="px-2.5 py-1 rounded-full border flex items-center space-x-1.5 font-medium">
+              <i data-lucide="activity" class="w-3.5 h-3.5"></i>
+              <span>核心 API: {{ status.mihomo_version || (status.mihomo_api_ready ? '就绪' : '不可用') }}</span>
+            </div>
+          </div>
+
+          <!-- Actions -->
+          <button @click="openSettingsModal" class="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition" title="连接设置">
+            <i data-lucide="settings" class="w-5 h-5"></i>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1 w-full space-y-6">
+
+      <!-- Navigation Tabs & Toolbar -->
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+        <div class="flex space-x-1 bg-slate-900 p-1 rounded-xl border border-slate-800 self-start">
+          <button @click="activeTab = 'nodes'" :class="{'bg-indigo-600 text-white shadow': activeTab === 'nodes', 'text-slate-400 hover:text-slate-200': activeTab !== 'nodes'}" class="px-4 py-2 rounded-lg text-sm font-medium transition flex items-center space-x-2">
+            <i data-lucide="server" class="w-4 h-4"></i>
+            <span>节点列表</span>
+            <span class="ml-1 text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono">{{ filteredProxies.length }}</span>
+          </button>
+          <button @click="activeTab = 'groups'" :class="{'bg-indigo-600 text-white shadow': activeTab === 'groups', 'text-slate-400 hover:text-slate-200': activeTab !== 'groups'}" class="px-4 py-2 rounded-lg text-sm font-medium transition flex items-center space-x-2">
+            <i data-lucide="git-fork" class="w-4 h-4"></i>
+            <span>策略组 ({{ proxyGroups.length }})</span>
+          </button>
+          <button @click="activeTab = 'rules'" :class="{'bg-indigo-600 text-white shadow': activeTab === 'rules', 'text-slate-400 hover:text-slate-200': activeTab !== 'rules'}" class="px-4 py-2 rounded-lg text-sm font-medium transition flex items-center space-x-2">
+            <i data-lucide="shield" class="w-4 h-4"></i>
+            <span>分流规则 ({{ rules.length }})</span>
+          </button>
+          <button @click="activeTab = 'yaml'" :class="{'bg-indigo-600 text-white shadow': activeTab === 'yaml', 'text-slate-400 hover:text-slate-200': activeTab !== 'yaml'}" class="px-4 py-2 rounded-lg text-sm font-medium transition flex items-center space-x-2">
+            <i data-lucide="file-code" class="w-4 h-4"></i>
+            <span>YAML 源码 & 备份</span>
+          </button>
+        </div>
+
+        <!-- Global Action Buttons -->
+        <div class="flex items-center flex-wrap gap-2">
+          <button @click="testAllDelays" :disabled="isTestingAllDelays" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-sm font-medium transition flex items-center space-x-1.5 shadow-sm">
+            <i data-lucide="gauge" class="w-4 h-4" :class="{'animate-spin text-indigo-400': isTestingAllDelays}"></i>
+            <span>{{ isTestingAllDelays ? '测速中...' : '一键测延迟' }}</span>
+          </button>
+          
+          <button @click="restartMihomo" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-sm font-medium transition flex items-center space-x-1.5 shadow-sm">
+            <i data-lucide="rotate-cw" class="w-4 h-4 text-amber-400"></i>
+            <span>重启容器</span>
+          </button>
+
+          <button @click="saveAndApply" :disabled="isSaving" class="px-4 py-2 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white rounded-lg text-sm font-semibold transition flex items-center space-x-1.5 shadow-lg shadow-indigo-600/30">
+            <i data-lucide="save" class="w-4 h-4"></i>
+            <span>{{ isSaving ? '保存中...' : '保存并生效' }}</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- ==================== TAB 1: PROXY NODES ==================== -->
+      <div v-show="activeTab === 'nodes'" class="space-y-4">
+        
+        <!-- Filter & Operation Toolbar -->
+        <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <!-- Search & Filter -->
+          <div class="flex flex-1 items-center gap-3">
+            <div class="relative flex-1 max-w-md">
+              <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"></i>
+              <input v-model="searchQuery" type="text" placeholder="搜索节点名称、IP、域名..." class="w-full pl-9 pr-4 py-2 bg-slate-950 border border-slate-800 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition">
+            </div>
+
+            <!-- Protocol Filter -->
+            <select v-model="selectedProtocol" class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-300 focus:outline-none focus:border-indigo-500">
+              <option value="">全部协议</option>
+              <option value="vless">VLESS</option>
+              <option value="vmess">VMess</option>
+              <option value="trojan">Trojan</option>
+              <option value="ss">Shadowsocks</option>
+              <option value="hysteria2">Hysteria2</option>
+            </select>
+          </div>
+
+          <!-- Add & Import Buttons -->
+          <div class="flex items-center space-x-2">
+            <button @click="openAddNodeModal" class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium rounded-lg transition flex items-center space-x-1.5 shadow-md shadow-indigo-500/20">
+              <i data-lucide="plus-circle" class="w-4 h-4"></i>
+              <span>添加节点</span>
+            </button>
+            <button @click="openBatchModal" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-sm font-medium rounded-lg transition flex items-center space-x-1.5">
+              <i data-lucide="file-input" class="w-4 h-4"></i>
+              <span>批量/链接导入</span>
+            </button>
+            <button @click="openSubModal" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-sm font-medium rounded-lg transition flex items-center space-x-1.5">
+              <i data-lucide="download-cloud" class="w-4 h-4"></i>
+              <span>订阅导入</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Node List Cards -->
+        <div v-if="filteredProxies.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div v-for="(node, index) in filteredProxies" :key="node.name + index" class="bg-slate-900 border border-slate-800/80 hover:border-slate-700 rounded-xl p-4.5 transition duration-200 flex flex-col justify-between group shadow-sm hover:shadow-md">
+            <!-- Card Header -->
+            <div class="space-y-2.5">
+              <div class="flex items-start justify-between gap-2">
+                <div class="flex items-center space-x-2 truncate">
+                  <span :class="getProtocolBadgeClass(node.type)" class="text-[11px] font-bold uppercase px-2 py-0.5 rounded-md font-mono border">
+                    {{ node.type || 'PROXY' }}
+                  </span>
+                  <h3 class="font-semibold text-slate-100 truncate text-base" :title="node.name">{{ node.name }}</h3>
+                </div>
+
+                <!-- Latency Badge & Ping Button -->
+                <div class="flex items-center space-x-1 shrink-0">
+                  <button @click="testSingleDelay(node.name)" :title="'点击测试延迟'" class="px-2 py-0.5 rounded-full text-xs font-mono font-medium flex items-center space-x-1 transition" :class="getDelayBadgeClass(delays[node.name])">
+                    <span class="w-1.5 h-1.5 rounded-full" :class="getDelayDotClass(delays[node.name])"></span>
+                    <span>{{ delays[node.name] !== undefined ? (delays[node.name] > 0 ? delays[node.name] + ' ms' : '超时') : '测速' }}</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Node Specs -->
+              <div class="bg-slate-950/60 rounded-lg p-2.5 space-y-1.5 text-xs font-mono text-slate-400 border border-slate-800/50">
+                <div class="flex items-center justify-between">
+                  <span class="text-slate-500">服务器:</span>
+                  <span class="text-slate-300 font-medium truncate max-w-[200px]" :title="node.server">{{ node.server }}:{{ node.port }}</span>
+                </div>
+                <div v-if="node.network || node.flow" class="flex items-center justify-between">
+                  <span class="text-slate-500">传输/流控:</span>
+                  <span class="text-indigo-400">{{ node.network || 'tcp' }} {{ node.flow ? '· ' + node.flow : '' }}</span>
+                </div>
+                <div v-if="node.tls || node['reality-opts']" class="flex items-center justify-between">
+                  <span class="text-slate-500">安全:</span>
+                  <span class="text-emerald-400">{{ node['reality-opts'] ? 'REALITY (' + (node.servername || 'sni') + ')' : 'TLS' }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Card Footer Actions -->
+            <div class="mt-4 pt-3 border-t border-slate-800/70 flex items-center justify-between text-xs">
+              <button @click="copyShareLink(node)" class="text-slate-400 hover:text-indigo-400 transition flex items-center space-x-1" title="复制分享链接">
+                <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                <span>复制链接</span>
+              </button>
+
+              <div class="flex items-center space-x-2">
+                <button @click="duplicateNode(node)" class="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded transition" title="克隆节点">
+                  <i data-lucide="copy-plus" class="w-4 h-4"></i>
+                </button>
+                <button @click="editNode(node)" class="p-1.5 text-slate-400 hover:text-indigo-400 hover:bg-slate-800 rounded transition" title="编辑节点">
+                  <i data-lucide="edit-3" class="w-4 h-4"></i>
+                </button>
+                <button @click="deleteNode(node.name)" class="p-1.5 text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded transition" title="删除节点">
+                  <i data-lucide="trash-2" class="w-4 h-4"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Empty State -->
+        <div v-else class="bg-slate-900 border border-slate-800 rounded-xl p-12 text-center space-y-4">
+          <div class="w-16 h-16 mx-auto bg-slate-800 rounded-full flex items-center justify-center text-slate-500">
+            <i data-lucide="inbox" class="w-8 h-8"></i>
+          </div>
+          <div class="space-y-1">
+            <h4 class="text-base font-medium text-slate-300">未找到匹配的代理节点</h4>
+            <p class="text-xs text-slate-500">点击上方按钮添加节点或导入订阅</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==================== TAB 2: PROXY GROUPS ==================== -->
+      <div v-show="activeTab === 'groups'" class="space-y-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-6">
+          <div class="flex items-center justify-between">
+            <div>
+              <h3 class="font-bold text-lg text-white">策略组管理 (Proxy Groups)</h3>
+              <p class="text-xs text-slate-400">调整策略组中的节点分配，修改后点击“保存并生效”即可应用到飞牛 Mihomo</p>
+            </div>
+            <button @click="openAddGroupModal" class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium rounded-lg transition flex items-center space-x-1.5">
+              <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+              <span>新建策略组</span>
+            </button>
+          </div>
+
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            <div v-for="(group, gIndex) in proxyGroups" :key="group.name" class="bg-slate-950 border border-slate-800 rounded-xl p-4.5 space-y-4">
+              <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div class="flex items-center space-x-2">
+                  <span class="text-xs px-2.5 py-0.5 rounded font-mono font-bold uppercase bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+                    {{ group.type || 'select' }}
+                  </span>
+                  <h4 class="font-bold text-base text-slate-100">{{ group.name }}</h4>
+                </div>
+                <span class="text-xs font-mono text-slate-400">{{ (group.proxies || []).length }} 个节点</span>
+              </div>
+
+              <!-- Proxies Multi-select Tag Cloud -->
+              <div class="space-y-2">
+                <label class="text-xs font-medium text-slate-400">包含的代理节点 (勾选以添加/移除):</label>
+                <div class="max-h-48 overflow-y-auto space-y-1.5 p-2 bg-slate-900 rounded-lg border border-slate-800/80">
+                  <label v-for="node in availableProxyNames" :key="node" class="flex items-center space-x-2.5 p-1.5 rounded hover:bg-slate-800/60 cursor-pointer text-xs transition">
+                    <input type="checkbox" :checked="isProxyInGroup(group, node)" @change="toggleProxyInGroup(group, node)" class="rounded bg-slate-950 border-slate-700 text-indigo-600 focus:ring-indigo-500">
+                    <span :class="isProxyInGroup(group, node) ? 'text-indigo-300 font-medium' : 'text-slate-400'">{{ node }}</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==================== TAB 3: RULES ==================== -->
+      <div v-show="activeTab === 'rules'" class="space-y-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
+          <div class="flex items-center justify-between">
+            <div>
+              <h3 class="font-bold text-lg text-white">分流规则列表</h3>
+              <p class="text-xs text-slate-400">按顺序匹配流量路由规则 (例如 TMDB 走代理、内网及 BT/PT 走直连)</p>
+            </div>
+            <button @click="openAddRuleModal" class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium rounded-lg transition flex items-center space-x-1.5">
+              <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+              <span>添加规则</span>
+            </button>
+          </div>
+
+          <!-- Rules Table -->
+          <div class="overflow-x-auto border border-slate-800 rounded-lg">
+            <table class="w-full text-left text-xs font-mono">
+              <thead class="bg-slate-950 text-slate-400 border-b border-slate-800 uppercase">
+                <tr>
+                  <th class="px-4 py-3">序号</th>
+                  <th class="px-4 py-3">规则类型</th>
+                  <th class="px-4 py-3">匹配目标 (Payload)</th>
+                  <th class="px-4 py-3">目标策略组 / 动作</th>
+                  <th class="px-4 py-3 text-right">操作</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-800 text-slate-300">
+                <tr v-for="(rule, rIdx) in rules" :key="rIdx" class="hover:bg-slate-800/40">
+                  <td class="px-4 py-2.5 text-slate-500">{{ rIdx + 1 }}</td>
+                  <td class="px-4 py-2.5 text-indigo-400 font-semibold">{{ parseRule(rule).type }}</td>
+                  <td class="px-4 py-2.5 text-slate-200">{{ parseRule(rule).payload }}</td>
+                  <td class="px-4 py-2.5">
+                    <span :class="getRuleTargetBadgeClass(parseRule(rule).target)" class="px-2 py-0.5 rounded text-[11px] font-bold">
+                      {{ parseRule(rule).target }}
+                    </span>
+                  </td>
+                  <td class="px-4 py-2.5 text-right space-x-1">
+                    <button @click="moveRule(rIdx, -1)" :disabled="rIdx === 0" class="p-1 hover:text-white text-slate-500 disabled:opacity-30">▲</button>
+                    <button @click="moveRule(rIdx, 1)" :disabled="rIdx === rules.length - 1" class="p-1 hover:text-white text-slate-500 disabled:opacity-30">▼</button>
+                    <button @click="deleteRule(rIdx)" class="p-1 hover:text-red-400 text-slate-500">✕</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==================== TAB 4: YAML & BACKUPS ==================== -->
+      <div v-show="activeTab === 'yaml'" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Raw YAML Editor -->
+        <div class="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+              <i data-lucide="code" class="w-5 h-5 text-indigo-400"></i>
+              <h3 class="font-bold text-base text-white">config.yaml 源码编辑</h3>
+            </div>
+            <button @click="saveRawYaml" class="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-lg transition">
+              保存源码
+            </button>
+          </div>
+          <textarea v-model="rawYaml" rows="24" class="w-full bg-slate-950 text-slate-200 font-mono text-xs p-4 rounded-xl border border-slate-800 focus:outline-none focus:border-indigo-500 leading-relaxed resize-y"></textarea>
+        </div>
+
+        <!-- Backups List -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+              <i data-lucide="history" class="w-5 h-5 text-indigo-400"></i>
+              <h3 class="font-bold text-base text-white">历史备份与回滚</h3>
+            </div>
+            <button @click="fetchBackups" class="text-xs text-slate-400 hover:text-slate-200">
+              <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+            </button>
+          </div>
+
+          <p class="text-xs text-slate-400">每次保存时系统均会自动为您备份一份。可随时一键恢复。</p>
+
+          <div class="space-y-2 max-h-[500px] overflow-y-auto pr-1">
+            <div v-for="bak in backups" :key="bak.path" class="bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs space-y-1.5">
+              <div class="flex items-center justify-between">
+                <span class="font-mono text-indigo-300 font-semibold truncate max-w-[160px]" :title="bak.filename">{{ bak.filename }}</span>
+                <span class="text-slate-500">{{ bak.size }}</span>
+              </div>
+              <div class="flex items-center justify-between text-slate-500">
+                <span>{{ bak.time }}</span>
+                <button @click="restoreBackup(bak.path)" class="text-amber-400 hover:text-amber-300 font-medium">恢复此版本</button>
+              </div>
+            </div>
+            <div v-if="backups.length === 0" class="text-center py-8 text-xs text-slate-500">暂无历史备份</div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+
+    <!-- ==================== MODALS ==================== -->
+
+    <!-- Add/Edit Node Modal -->
+    <div v-if="showNodeModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-2xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
+          <h3 class="font-bold text-lg text-white">{{ isEditingNode ? '编辑代理节点' : '添加代理节点' }}</h3>
+          <button @click="showNodeModal = false" class="text-slate-400 hover:text-white">✕</button>
+        </div>
+
+        <div class="p-6 overflow-y-auto space-y-4 flex-1 text-xs">
+          <!-- Quick Share Link Paste -->
+          <div class="bg-indigo-950/30 border border-indigo-500/30 rounded-xl p-3.5 space-y-2">
+            <label class="font-semibold text-indigo-300 flex items-center space-x-1.5">
+              <i data-lucide="zap" class="w-3.5 h-3.5"></i>
+              <span>快捷解析节点链接 (支持 vless://, vmess://, trojan://, ss://, hy2://)</span>
+            </label>
+            <div class="flex space-x-2">
+              <input v-model="quickLinkInput" type="text" placeholder="粘贴节点分享链接..." class="flex-1 px-3 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 font-mono text-xs">
+              <button @click="parseQuickLink" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-medium">解析填充</button>
+            </div>
+          </div>
+
+          <!-- Form Grid -->
+          <div class="grid grid-cols-2 gap-4">
+            <div class="col-span-2 space-y-1">
+              <label class="text-slate-400 font-medium">节点名称 (Name) *</label>
+              <input v-model="nodeForm.name" type="text" class="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 font-medium" placeholder="例如: 香港 01 | 优质原生">
+            </div>
+
+            <div class="space-y-1">
+              <label class="text-slate-400 font-medium">协议类型 (Type) *</label>
+              <select v-model="nodeForm.type" class="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 font-mono">
+                <option value="vless">VLESS</option>
+                <option value="vmess">VMess</option>
+                <option value="trojan">Trojan</option>
+                <option value="ss">Shadowsocks</option>
+                <option value="hysteria2">Hysteria2</option>
+              </select>
+            </div>
+
+            <div class="space-y-1">
+              <label class="text-slate-400 font-medium">传输协议 (Network)</label>
+              <select v-model="nodeForm.network" class="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 font-mono">
+                <option value="tcp">tcp</option>
+                <option value="ws">ws (WebSocket)</option>
+                <option value="grpc">grpc</option>
+                <option value="h2">h2 (HTTP/2)</option>
+              </select>
+            </div>
+
+            <div class="space-y-1">
+              <label class="text-slate-400 font-medium">服务器地址 (Server IP / Domain) *</label>
+              <input v-model="nodeForm.server" type="text" class="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 font-mono" placeholder="1.2.3.4 或 example.com">
+            </div>
+
+            <div class="space-y-1">
+              <label class="text-slate-400 font-medium">端口 (Port) *</label>
+              <input v-model.number="nodeForm.port" type="number" class="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 font-mono" placeholder="443">
+            </div>
+
+            <!-- Auth fields depending on type -->
+            <div v-if="['vless', 'vmess'].includes(nodeForm.type)" class="col-span-2 space-y-1">
+              <label class="text-slate-400 font-medium">UUID *</label>
+              <input v-model="nodeForm.uuid" type="text" class="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 font-mono" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+            </div>
+
+            <div v-if="['trojan', 'ss'].includes(nodeForm.type)" class="col-span-2 space-y-1">
+              <label class="text-slate-400 font-medium">密码 (Password) *</label>
+              <input v-model="nodeForm.password" type="text" class="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 font-mono">
+            </div>
+
+            <div v-if="nodeForm.type === 'ss'" class="space-y-1">
+              <label class="text-slate-400 font-medium">加密方式 (Cipher)</label>
+              <input v-model="nodeForm.cipher" type="text" class="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 font-mono" placeholder="aes-256-gcm">
+            </div>
+
+            <div v-if="nodeForm.type === 'hysteria2'" class="col-span-2 space-y-1">
+              <label class="text-slate-400 font-medium">Auth / 密码 *</label>
+              <input v-model="nodeForm.auth" type="text" class="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 font-mono">
+            </div>
+
+            <div v-if="nodeForm.type === 'vless'" class="space-y-1">
+              <label class="text-slate-400 font-medium">流控 (Flow)</label>
+              <input v-model="nodeForm.flow" type="text" class="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 font-mono" placeholder="xtls-rprx-vision">
+            </div>
+
+            <div class="space-y-1">
+              <label class="text-slate-400 font-medium">SNI / ServerName</label>
+              <input v-model="nodeForm.servername" type="text" class="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 font-mono" placeholder="www.bing.com">
+            </div>
+
+            <!-- TLS & Reality Toggle -->
+            <div class="col-span-2 border-t border-slate-800 pt-3 space-y-3">
+              <div class="flex items-center space-x-6">
+                <label class="flex items-center space-x-2 cursor-pointer">
+                  <input v-model="nodeForm.tls" type="checkbox" class="rounded bg-slate-950 border-slate-700 text-indigo-600">
+                  <span class="text-slate-300 font-medium">启用 TLS</span>
+                </label>
+                <label v-if="nodeForm.type === 'vless'" class="flex items-center space-x-2 cursor-pointer">
+                  <input v-model="nodeForm.is_reality" type="checkbox" class="rounded bg-slate-950 border-slate-700 text-indigo-600">
+                  <span class="text-indigo-400 font-medium">启用 Reality</span>
+                </label>
+                <label class="flex items-center space-x-2 cursor-pointer">
+                  <input v-model="nodeForm.udp" type="checkbox" class="rounded bg-slate-950 border-slate-700 text-indigo-600">
+                  <span class="text-slate-300">UDP 支持</span>
+                </label>
+              </div>
+
+              <!-- Reality Options -->
+              <div v-if="nodeForm.is_reality" class="grid grid-cols-2 gap-3 bg-slate-950 p-3 rounded-lg border border-slate-800">
+                <div class="space-y-1">
+                  <label class="text-slate-400">Public Key (pbk)</label>
+                  <input v-model="nodeForm.reality_pbk" type="text" class="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-800 rounded text-slate-200 font-mono text-xs">
+                </div>
+                <div class="space-y-1">
+                  <label class="text-slate-400">Short ID (sid)</label>
+                  <input v-model="nodeForm.reality_sid" type="text" class="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-800 rounded text-slate-200 font-mono text-xs">
+                </div>
+                <div class="space-y-1">
+                  <label class="text-slate-400">Client Fingerprint (fp)</label>
+                  <input v-model="nodeForm.client_fp" type="text" class="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-800 rounded text-slate-200 font-mono text-xs" placeholder="chrome">
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <div class="px-6 py-4 border-t border-slate-800 flex items-center justify-end space-x-3 bg-slate-950/50">
+          <button @click="showNodeModal = false" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium">取消</button>
+          <button @click="submitNodeForm" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold shadow-md shadow-indigo-500/30">保存节点</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Batch / Share Link Import Modal -->
+    <div v-if="showBatchModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-xl w-full flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
+          <h3 class="font-bold text-base text-white">批量导入节点 (链接 / YAML)</h3>
+          <button @click="showBatchModal = false" class="text-slate-400 hover:text-white">✕</button>
+        </div>
+
+        <div class="p-6 space-y-4 text-xs">
+          <p class="text-slate-400">支持直接粘贴单条或多条节点链接（一行一个），也支持粘贴 Base64 订阅文本或 Clash 节点 YAML 块：</p>
+          <textarea v-model="batchInputText" rows="10" placeholder="vless://...&#10;vmess://...&#10;trojan://...&#10;ss://..." class="w-full bg-slate-950 text-slate-200 font-mono text-xs p-3 rounded-xl border border-slate-800 focus:outline-none focus:border-indigo-500"></textarea>
+          
+          <div class="flex items-center space-x-2">
+            <input v-model="batchAddToProxyGroup" type="checkbox" id="add_group_check" class="rounded bg-slate-950 border-slate-700 text-indigo-600">
+            <label for="add_group_check" class="text-slate-300 cursor-pointer">自动加入到默认 PROXY 策略组</label>
+          </div>
+        </div>
+
+        <div class="px-6 py-4 border-t border-slate-800 flex items-center justify-end space-x-3 bg-slate-950/50">
+          <button @click="showBatchModal = false" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium">取消</button>
+          <button @click="submitBatchImport" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold">开始导入</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Subscription Import Modal -->
+    <div v-if="showSubModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-2xl w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
+          <h3 class="font-bold text-base text-white">从订阅链接拉取节点</h3>
+          <button @click="showSubModal = false" class="text-slate-400 hover:text-white">✕</button>
+        </div>
+
+        <div class="p-6 overflow-y-auto space-y-4 flex-1 text-xs">
+          <div class="space-y-1.5">
+            <label class="text-slate-400 font-medium">订阅 URL (HTTP / HTTPS)</label>
+            <div class="flex space-x-2">
+              <input v-model="subUrlInput" type="text" placeholder="https://..." class="flex-1 px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 font-mono text-xs">
+              <button @click="fetchSubscriptionNodes" :disabled="isFetchingSub" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-medium flex items-center space-x-1">
+                <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                <span>{{ isFetchingSub ? '下载中...' : '拉取节点' }}</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Preview fetched proxies -->
+          <div v-if="fetchedSubProxies.length > 0" class="space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="text-slate-400 font-medium">已拉取到 {{ fetchedSubProxies.length }} 个节点，请勾选要导入的节点:</span>
+              <button @click="toggleSelectAllSub" class="text-indigo-400 hover:underline text-xs">全选/反选</button>
+            </div>
+
+            <div class="max-h-60 overflow-y-auto space-y-1 p-2 bg-slate-950 rounded-lg border border-slate-800">
+              <label v-for="(p, pidx) in fetchedSubProxies" :key="pidx" class="flex items-center space-x-2.5 p-1.5 rounded hover:bg-slate-800/60 cursor-pointer">
+                <input type="checkbox" v-model="selectedSubIndices" :value="pidx" class="rounded bg-slate-950 border-slate-700 text-indigo-600">
+                <span class="px-1.5 py-0.5 rounded text-[10px] uppercase font-mono font-bold bg-slate-800 text-slate-300">{{ p.type }}</span>
+                <span class="text-slate-200 truncate flex-1">{{ p.name }}</span>
+                <span class="text-slate-500 font-mono text-[11px]">{{ p.server }}:{{ p.port }}</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div class="px-6 py-4 border-t border-slate-800 flex items-center justify-end space-x-3 bg-slate-950/50">
+          <button @click="showSubModal = false" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium">取消</button>
+          <button @click="importSelectedSubProxies" :disabled="selectedSubIndices.length === 0" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white rounded-lg text-xs font-semibold">
+            导入选中的 ({{ selectedSubIndices.length }})
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div v-if="showSettingsModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
+          <h3 class="font-bold text-base text-white">飞牛 SSH 与 Mihomo 连接设置</h3>
+          <button @click="showSettingsModal = false" class="text-slate-400 hover:text-white">✕</button>
+        </div>
+
+        <div class="p-6 space-y-3 text-xs">
+          <div class="grid grid-cols-2 gap-3">
+            <div class="space-y-1">
+              <label class="text-slate-400">SSH 主机 IP</label>
+              <input v-model="settingsForm.ssh_host" type="text" class="w-full px-3 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 font-mono">
+            </div>
+            <div class="space-y-1">
+              <label class="text-slate-400">SSH 端口</label>
+              <input v-model.number="settingsForm.ssh_port" type="number" class="w-full px-3 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 font-mono">
+            </div>
+            <div class="space-y-1">
+              <label class="text-slate-400">SSH 用户名</label>
+              <input v-model="settingsForm.ssh_user" type="text" class="w-full px-3 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 font-mono">
+            </div>
+            <div class="space-y-1">
+              <label class="text-slate-400">SSH 密码</label>
+              <input v-model="settingsForm.ssh_pass" type="password" class="w-full px-3 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 font-mono">
+            </div>
+          </div>
+
+          <div class="space-y-1">
+            <label class="text-slate-400">Mihomo 配置文件路径 (Remote Path)</label>
+            <input v-model="settingsForm.remote_path" type="text" class="w-full px-3 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 font-mono">
+          </div>
+
+          <div class="space-y-1">
+            <label class="text-slate-400">Mihomo 核心 Controller API</label>
+            <input v-model="settingsForm.mihomo_api" type="text" class="w-full px-3 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 font-mono">
+          </div>
+
+          <div class="space-y-1">
+            <label class="text-slate-400">Mihomo Secret 密钥</label>
+            <input v-model="settingsForm.mihomo_secret" type="text" class="w-full px-3 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 font-mono">
+          </div>
+        </div>
+
+        <div class="px-6 py-4 border-t border-slate-800 flex items-center justify-end space-x-3 bg-slate-950/50">
+          <button @click="showSettingsModal = false" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium">取消</button>
+          <button @click="saveSettings" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold">保存设置</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div v-if="toast.show" class="fixed bottom-6 right-6 z-50 transition duration-300 ease-out flex items-center space-x-3 px-4 py-3 rounded-xl shadow-2xl border text-sm font-medium" :class="toast.type === 'success' ? 'bg-emerald-950 border-emerald-500/40 text-emerald-200' : 'bg-red-950 border-red-500/40 text-red-200'">
+      <span>{{ toast.message }}</span>
+    </div>
+
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
